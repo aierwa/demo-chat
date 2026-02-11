@@ -1,6 +1,9 @@
 from typing import Dict, Any, List
 from langchain_core.tools import tool
 from ..rag.rag_manager import RAGManager
+from ..agent.skills import SKILLS
+
+
 
 _rag_manager = None
 
@@ -109,6 +112,29 @@ def rag_search(query: str) -> str:
     except Exception as e:
         print(f"[RAG检索错误] {e}")
         return f"检索失败: {str(e)}"
+
+
+@tool
+def load_skill(skill_name: str) -> str:
+    """
+    加载指定技能的详细内容。
+    当你需要关于如何处理特定类型请求的详细信息时，请使用此工具。它将为你提供该技能领域的全面说明和使用指导方针。
+    
+    Args:
+        skill_name: 技能名称
+        
+    Returns:
+        技能详细描述
+    """
+    print(f"[工具调用] 加载技能: {skill_name}")
+    
+    for skill in SKILLS:
+        if skill["name"] == skill_name:
+            return f"Loaded skill: {skill_name}\n\n{skill['content']}"
+
+    # Skill not found
+    available = ", ".join(s["name"] for s in SKILLS)
+    return f"Skill '{skill_name}' not found. Available skills: {available}"
 
 
 def get_tools():

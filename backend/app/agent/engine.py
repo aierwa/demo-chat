@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langgraph.graph.message import add_messages
 from dotenv import load_dotenv
+from app.agent.midware import SkillMiddleware
 
 import json
 
@@ -26,12 +27,13 @@ class AgentEngine:
             temperature=0.7,
             streaming=True
         )
-        
         self.tools = get_tools()
         
         self.agent = create_agent(
+            system_prompt="你是一名非常有用的企业个人助手。",
             model=self.llm,
             tools=self.tools,
+            middleware=[SkillMiddleware()]
         )
 
     async def stream_chat(self, user_message: str, history: list[dict]):
