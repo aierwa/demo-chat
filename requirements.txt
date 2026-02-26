@@ -1,0 +1,12 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+python-dotenv==1.0.1
+langchain==1.2.10
+langchain-openai==1.1.9
+langgraph==1.0.8
+chromadb==0.5.23
+pypdf==5.1.0
+langchain-community==0.4.1
+supabase==2.10.0
+vercel==0.0.1
