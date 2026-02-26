@@ -1,5 +1,4 @@
 import axios from 'axios'
-import type { AgentStep } from '../types'
 
 const api = axios.create({
   baseURL: '/api',

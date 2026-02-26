@@ -8,3 +8,4 @@ langgraph==1.0.8
 chromadb==0.5.23
 pypdf==5.1.0
 langchain-community==0.4.1
+supabase==2.10.0
