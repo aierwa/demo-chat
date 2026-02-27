@@ -13,8 +13,8 @@ class RAGManager:
         resources_dir: str = None,
         persist_directory: str = None,
         embedding_model: str = None,
-        chunk_size: int = 600,
-        chunk_overlap: int = 100
+        chunk_size: int = 800,
+        chunk_overlap: int = 150
     ):
         """
         初始化RAG管理器
@@ -29,7 +29,8 @@ class RAGManager:
         self.document_loader = DocumentLoader(resources_dir)
         self.text_splitter = TextSplitter(chunk_size, chunk_overlap)
         self.embedding_service = EmbeddingService(model=embedding_model)
-        self.vector_store = VectorStore(persist_directory)
+        # 将 embedding_service 的 embeddings 实例传递给 VectorStore，确保使用相同的配置
+        self.vector_store = VectorStore(persist_directory, embeddings=self.embedding_service.embeddings)
     
     def initialize_knowledge_base(self, force_rebuild: bool = False):
         """
@@ -68,7 +69,7 @@ class RAGManager:
         self.vector_store.add_documents(chunks, embeddings)
         print("知识库初始化完成")
     
-    def search(self, query: str, n_results: int = 3) -> List[Dict[str, Any]]:
+    def search(self, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
         """
         搜索知识库
         

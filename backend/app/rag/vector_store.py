@@ -18,7 +18,8 @@ class VectorStore:
     def __init__(
         self,
         persist_directory: str = None,
-        collection_name: str = "knowledge_base"
+        collection_name: str = "knowledge_base",
+        embeddings = None
     ):
         """
         初始化向量存储
@@ -26,9 +27,11 @@ class VectorStore:
         Args:
             persist_directory: 向量库持久化目录（仅 ChromaDB 使用）
             collection_name: 集合名称
+            embeddings: 嵌入模型实例（仅 Supabase 使用，推荐传入 EmbeddingService.embeddings）
         """
         self.collection_name = collection_name
         self.persist_directory = persist_directory
+        self._embeddings = embeddings
         self._vector_store = None
         self._client = None
         
@@ -75,14 +78,19 @@ class VectorStore:
         # 自动创建表和函数（如果不存在）
         self._ensure_supabase_schema()
         
-        embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small",
-            openai_api_key=os.getenv("OPENAI_API_KEY")
-        )
+        # 使用传入的 embeddings 实例，如果没有则创建默认的
+        if self._embeddings is None:
+            from langchain_openai import OpenAIEmbeddings
+            self._embeddings = OpenAIEmbeddings(
+                openai_api_base=os.getenv("OPENAI_BASE_URL"),
+                openai_api_key=os.getenv("OPENAI_API_KEY"),
+                model=os.getenv("EMBEDDING_MODEL_NAME"),
+                dimensions=4096
+            )
         
         self._vector_store = SupabaseVectorStore(
             client=self._client,
-            embedding=embeddings,
+            embedding=self._embeddings,
             table_name=self.collection_name,
             query_name=f"{self.collection_name}_match"
         )
@@ -105,18 +113,22 @@ class VectorStore:
                 
                 # 检查是否是表不存在的错误
                 if "PGRST205" in error_msg or "Could not find the table" in error_msg:
-                    if attempt == 0:
-                        print(f"表 {self.collection_name} 不存在，需要手动创建")
-                        print("\n" + "="*60)
-                        print("请在 Supabase SQL Editor 中执行以下 SQL:")
-                        print("="*60)
-                        print(self._get_manual_sql())
-                        print("="*60 + "\n")
-                        raise RuntimeError(
-                            f"Supabase 表 '{self.collection_name}' 不存在。\n"
-                            f"请登录 Supabase Dashboard -> SQL Editor，\n"
-                            f"执行上面打印的 SQL 语句来创建表和函数。"
-                        )
+                    # 立即打印 SQL 提示
+                    sql = self._get_manual_sql()
+                    print("\n" + "="*70)
+                    print("ERROR: Supabase 表不存在！")
+                    print("="*70)
+                    print(f"表名: {self.collection_name}")
+                    print("\n请在 Supabase Dashboard -> SQL Editor 中执行以下 SQL:")
+                    print("-"*70)
+                    print(sql)
+                    print("-"*70)
+                    print("\n执行完 SQL 后，请重启应用。\n")
+                    
+                    # 抛出异常，但保留原始错误信息
+                    raise RuntimeError(
+                        f"Supabase 表 '{self.collection_name}' 不存在。"
+                    ) from e
                 else:
                     # 其他错误，可能是网络问题，重试
                     if attempt < max_retries - 1:
@@ -183,9 +195,11 @@ $$;"""
             embeddings: 对应的嵌入向量列表
         """
         if VECTOR_STORE_TYPE == "supabase":
+            import uuid
             texts = [chunk["content"] for chunk in chunks]
-            metadatas = [{"source": chunk["source"]} for chunk in chunks]
-            ids = [chunk["chunk_id"] for chunk in chunks]
+            metadatas = [{"source": chunk["source"], "chunk_id": chunk["chunk_id"]} for chunk in chunks]
+            # Supabase 需要 UUID 格式的 id，生成新的 UUID
+            ids = [str(uuid.uuid4()) for _ in chunks]
             
             self._vector_store.add_texts(
                 texts=texts,
@@ -269,7 +283,22 @@ $$;"""
     def clear_collection(self):
         """清空集合中的所有文档"""
         if VECTOR_STORE_TYPE == "supabase":
-            self._client.table(self.collection_name).delete().neq("id", "").execute()
+            # 使用 RPC 调用删除所有记录（绕过 UUID 类型检查）
+            try:
+                # 方法1: 使用 not.is 过滤器
+                self._client.table(self.collection_name).delete().not_.is_("id", None).execute()
+            except Exception:
+                # 方法2: 如果上面的方法失败，使用原始 SQL
+                try:
+                    self._client.rpc("exec_sql", {
+                        "sql": f"DELETE FROM public.{self.collection_name};"
+                    }).execute()
+                except Exception:
+                    # 方法3: 逐个删除所有记录
+                    response = self._client.table(self.collection_name).select("id").execute()
+                    if response.data:
+                        for record in response.data:
+                            self._client.table(self.collection_name).delete().eq("id", record["id"]).execute()
             print("已清空 Supabase 向量库")
         else:
             self._client.delete_collection(self.collection_name)

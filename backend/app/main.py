@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# 添加项目根目录到 Python 路径（解决 VS Code 调试器模块导入问题）
+backend_dir = Path(__file__).parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -18,7 +26,7 @@ async def lifespan(app: FastAPI):
     try:
         print("初始化RAG知识库...")
         rag_manager = get_rag_manager()
-        rag_manager.initialize_knowledge_base()
+        rag_manager.initialize_knowledge_base(force_rebuild=False)
         
         kb_info = rag_manager.get_knowledge_base_info()
         print(f"知识库信息: {kb_info}")
@@ -66,3 +74,14 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info"
+    )

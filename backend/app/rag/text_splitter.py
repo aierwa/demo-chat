@@ -7,20 +7,33 @@ class TextSplitter:
     
     def __init__(
         self,
-        chunk_size: int = 1000,
-        chunk_overlap: int = 200,
+        chunk_size: int = 800,
+        chunk_overlap: int = 150,
         separators: List[str] = None
     ):
         """
         初始化文本分块器
         
         Args:
-            chunk_size: 每个分块的最大字符数
-            chunk_overlap: 分块之间的重叠字符数
-            separators: 分隔符列表，默认为["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
+            chunk_size: 每个分块的最大字符数（默认800，适合中文文档）
+            chunk_overlap: 分块之间的重叠字符数（默认150，保持上下文连贯）
+            separators: 分隔符列表，优化中文文档分割
         """
         if separators is None:
-            separators = ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
+            # 优化中文文档分隔符顺序：优先按段落和章节分割
+            separators = [
+                "\n\n\n",  # 三级换行（章节分隔）
+                "\n\n",    # 段落分隔
+                "\n",      # 行分隔
+                "。\n",     # 句末换行（保持段落完整性）
+                "。",      # 句号
+                "；",      # 分号
+                "！",      # 感叹号
+                "？",      # 问号
+                "\u3002",  # 中文句号（全角）
+                " ",       # 空格
+                ""         # 最后按字符分割
+            ]
         
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,

@@ -94,24 +94,35 @@ def rag_search(query: str) -> str:
     """
     print(f"[工具调用] RAG检索: {query}")
     
-    try:
-        rag_manager = get_rag_manager()
-        results = rag_manager.search(query, n_results=3)
-        
-        if not results:
-            return "未在知识库中找到相关内容"
-        
-        formatted_results = []
-        for i, result in enumerate(results, 1):
-            formatted_results.append(
-                f"[相关内容 {i}] 来源: {result['source']}\n"
-                f"{result['content']}"
-            )
-        
-        return "\n\n".join(formatted_results)
-    except Exception as e:
-        print(f"[RAG检索错误] {e}")
-        return f"检索失败: {str(e)}"
+    import time
+    max_retries = 3
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            rag_manager = get_rag_manager()
+            results = rag_manager.search(query, n_results=5)  # 增加结果数量，提高召回率
+            
+            if not results:
+                return "未在知识库中找到相关内容"
+            
+            formatted_results = []
+            for i, result in enumerate(results, 1):
+                formatted_results.append(
+                    f"[相关内容 {i}] 来源: {result['source']}\n"
+                    f"{result['content']}"
+                )
+            
+            return "\n\n".join(formatted_results)
+        except Exception as e:
+            last_error = e
+            print(f"[RAG检索错误] 尝试 {attempt + 1}/{max_retries}: {e}")
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # 指数退避: 1s, 2s
+                print(f"[RAG检索] 等待 {wait_time} 秒后重试...")
+                time.sleep(wait_time)
+    
+    return f"检索失败: {str(last_error)}"
 
 
 @tool

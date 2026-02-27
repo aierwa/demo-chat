@@ -42,7 +42,7 @@ class SkillMiddleware(AgentMiddleware):
         # ]
         # new_system_message = SystemMessage(content_blocks=new_content) # 实测这个写法效果不好
         new_system_message = SystemMessage(content = request.system_message.content + skills_addendum)
-        print(new_system_message)
+        # print(new_system_message)
 
         modified_request = request.override(system_message=new_system_message)
         return handler(modified_request)

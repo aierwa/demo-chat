@@ -28,7 +28,7 @@ class EmbeddingService:
             openai_api_base=self.base_url,
             openai_api_key=self.api_key,
             model=self.model,
-            dimensions=4096
+            dimensions=1536
         )
     
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
