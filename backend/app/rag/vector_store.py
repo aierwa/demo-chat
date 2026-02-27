@@ -72,6 +72,9 @@ class VectorStore:
         
         self._client: Client = create_client(supabase_url, supabase_anon_key)
         
+        # 自动创建表和函数（如果不存在）
+        self._ensure_supabase_schema()
+        
         embeddings = OpenAIEmbeddings(
             model="text-embedding-3-small",
             openai_api_key=os.getenv("OPENAI_API_KEY")
@@ -85,6 +88,87 @@ class VectorStore:
         )
         
         print(f"已连接到 Supabase 向量数据库: {supabase_url}")
+    
+    def _ensure_supabase_schema(self):
+        """确保 Supabase 表和函数存在，不存在则自动创建"""
+        import time
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # 尝试访问表来检查是否存在
+                result = self._client.table(self.collection_name).select("id", count="exact").limit(1).execute()
+                print(f"表 {self.collection_name} 已存在")
+                return
+            except Exception as e:
+                error_msg = str(e)
+                
+                # 检查是否是表不存在的错误
+                if "PGRST205" in error_msg or "Could not find the table" in error_msg:
+                    if attempt == 0:
+                        print(f"表 {self.collection_name} 不存在，需要手动创建")
+                        print("\n" + "="*60)
+                        print("请在 Supabase SQL Editor 中执行以下 SQL:")
+                        print("="*60)
+                        print(self._get_manual_sql())
+                        print("="*60 + "\n")
+                        raise RuntimeError(
+                            f"Supabase 表 '{self.collection_name}' 不存在。\n"
+                            f"请登录 Supabase Dashboard -> SQL Editor，\n"
+                            f"执行上面打印的 SQL 语句来创建表和函数。"
+                        )
+                else:
+                    # 其他错误，可能是网络问题，重试
+                    if attempt < max_retries - 1:
+                        print(f"检查表时出错，正在重试 ({attempt + 1}/{max_retries}): {e}")
+                        time.sleep(1)
+                    else:
+                        raise
+    
+    def _get_manual_sql(self) -> str:
+        """获取手动创建表和函数的 SQL"""
+        function_name = f"{self.collection_name}_match"
+        return f"""-- 启用向量扩展（如果还没有启用）
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 创建表
+CREATE TABLE IF NOT EXISTS public.{self.collection_name} (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    content TEXT NOT NULL,
+    metadata JSONB,
+    embedding VECTOR(1536)
+);
+
+-- 创建索引（提高向量搜索性能）
+CREATE INDEX IF NOT EXISTS idx_{self.collection_name}_embedding 
+ON public.{self.collection_name} 
+USING ivfflat (embedding vector_cosine_ops);
+
+-- 创建相似度搜索函数
+CREATE OR REPLACE FUNCTION public.{function_name}(
+    query_embedding VECTOR(1536),
+    match_count INT DEFAULT 5
+)
+RETURNS TABLE(
+    id UUID,
+    content TEXT,
+    metadata JSONB,
+    similarity FLOAT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        {self.collection_name}.id,
+        {self.collection_name}.content,
+        {self.collection_name}.metadata,
+        1 - ({self.collection_name}.embedding <=> query_embedding) AS similarity
+    FROM {self.collection_name}
+    ORDER BY {self.collection_name}.embedding <=> query_embedding
+    LIMIT match_count;
+END;
+$$;"""
     
     def add_documents(
         self,
